@@ -6,10 +6,12 @@
 //
 import SwiftUI
 
+
 struct ContentView: View {
     @State private var isLoading = true
     @State private var posts: [Post] = []
     @State private var searchText = ""
+    @State private var selectedPost: Post? = nil
 
     var filteredPosts: [Post] {
         if searchText.isEmpty {
@@ -21,12 +23,12 @@ struct ContentView: View {
 
     var body: some View {
         VStack {
-            
             if isLoading {
                 LoadingView()
             } else {
                 SearchBar(text: $searchText)
                     .padding(.top)
+
                 List(filteredPosts) { post in
                     VStack(alignment: .leading) {
                         Text(post.title)
@@ -34,43 +36,52 @@ struct ContentView: View {
                         Text(post.body)
                             .font(.subheadline)
                     }
+                    .onTapGesture {
+                        selectedPost = post
+                    }
                 }
             }
         }
         .onAppear {
+            performInitialSetup()
+        }
+        .sheet(item: $selectedPost) { post in
+            DetailView(post: post)
+        }
+    }
+
+    func performInitialSetup() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             loadData()
         }
     }
 
     func loadData() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            guard let url = URL(string: "https://gorest.co.in/public/v1/posts") else {
+        guard let url = URL(string: "https://gorest.co.in/public/v1/posts") else {
+            return
+        }
+
+        let task = URLSession.shared.dataTask(with: url) { (data, response, error) in
+            guard let data = data else {
                 return
             }
 
-            let task = URLSession.shared.dataTask(with: url) { (data, response, error) in
-                guard let data = data else {
-                    return
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(ResponseData.self, from: data)
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.posts = response.data
                 }
-
-                do {
-                    let decoder = JSONDecoder()
-                    decoder.keyDecodingStrategy = .convertFromSnakeCase
-                    let response = try decoder.decode(ResponseData.self, from: data)
-                    DispatchQueue.main.async {
-                        self.isLoading = false
-                        self.posts = response.data
-                    }
-                } catch {
-                    print("Error: \(error)")
-                }
+            } catch {
+                print("Error: \(error)")
             }
-
-            task.resume()
         }
+
+        task.resume()
     }
 }
-
 
 struct LoadingView: View {
     var body: some View {
@@ -102,8 +113,17 @@ struct SearchBar: View {
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
+struct DetailView: View {
+    let post: Post
+
+    var body: some View {
+        VStack {
+            Text(post.title)
+                .font(.headline)
+                .padding()
+            Text(post.body)
+                .font(.subheadline)
+                .padding()
+        }
     }
 }
